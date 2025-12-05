@@ -3,105 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>连接诊断工具</title>
+    <title>位置发送系统</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; }
-        .card { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; background: #f8f9fa; }
-        h3 { margin-top: 0; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-right: 10px; }
-        .log { background: #222; color: #fff; padding: 15px; border-radius: 5px; font-family: monospace; min-height: 150px; white-space: pre-wrap; word-break: break-all;}
-        .success { color: #4caf50; font-weight: bold; }
-        .error { color: #ff5252; font-weight: bold; }
-        .warn { color: #ffeb3b; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f4f9; }
+        .container { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        h2 { color: #333; margin-bottom: 1.5rem; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 5px; cursor: pointer; transition: background 0.3s; width: 100%; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 20px; text-align: left; font-size: 14px; line-height: 1.6; word-wrap: break-word; }
+        .log-item { margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>🛠️ 服务器连接诊断</h2>
-    <p>如果此页面是通过 <b>https://</b> 开头的地址访问的，发送功能 100% 会失败。</p>
+    <div class="container">
+        <h2>📍 位置发送测试</h2>
+        <p style="color: #666; margin-bottom: 20px;">点击下方按钮获取位置并发送到服务器。</p>
+        
+        <button id="btn" onclick="startProcess()">获取并发送位置</button>
 
-    <div class="card">
-        <h3>步骤 1: 基础网络测试</h3>
-        <p>不获取位置，仅尝试向服务器发一个 "Hello" 包。</p>
-        <button onclick="testConnection()">测试服务器连接</button>
+        <div id="status"></div>
     </div>
-
-    <div class="card">
-        <h3>步骤 2: 获取并发送位置</h3>
-        <p>请求 GPS 权限并发送数据。</p>
-        <button onclick="getFullLocation()">获取并发送</button>
-    </div>
-
-    <div class="log" id="console">系统就绪...</div>
 
     <script>
-        // 注意：结尾要加上 /api/receive_location
-const SERVER_URL = "https://vincent-unmeasurable-fiducially.ngrok-free.app/api/receive_location";
-        function log(text, type='info') {
-            const el = document.getElementById('console');
+        // ✅ 这里的 URL 已经更新为你提供的 Ngrok 地址
+        const SERVER_URL = "https://vincent-unmeasurable-fiducially.ngrok-free.app/api/receive_location";
+
+        function log(msg, type = 'normal') {
+            const statusDiv = document.getElementById('status');
             const time = new Date().toLocaleTimeString();
-            let color = '#fff';
-            if(type==='error') color = '#ff5252';
-            if(type==='success') color = '#4caf50';
-            
-            el.innerHTML += `<br><span style="color:${color}">[${time}] ${text}</span>`;
-            el.scrollTop = el.scrollHeight; // 自动滚动到底部
+            let colorStr = type === 'error' ? 'color:red' : (type === 'success' ? 'color:green' : 'color:#333');
+            statusDiv.innerHTML += `<div class="log-item" style="${colorStr}">[${time}] ${msg}</div>`;
         }
 
-        // 检查页面环境
-        if (window.location.protocol === 'https:') {
-            log("⚠️ 警告: 当前页面是 HTTPS 协议，浏览器会拦截对 HTTP 服务器的请求！请改为 file:// 或 http:// 访问。", "error");
-        }
+        function startProcess() {
+            const btn = document.getElementById('btn');
+            btn.disabled = true;
+            btn.innerText = "处理中...";
+            log("正在请求 GPS 权限...");
 
-        // 核心发送函数
-        async function sendData(payload, description) {
-            log(`正在尝试发送 ${description}...`);
-            try {
-                const response = await fetch(SERVER_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.ok) {
-                    const json = await response.json();
-                    log(`✅ 发送成功! 服务器回应: ${JSON.stringify(json)}`, 'success');
-                } else {
-                    log(`❌ 服务器连上了，但返回错误: ${response.status} ${response.statusText}`, 'error');
-                }
-            } catch (err) {
-                console.error(err);
-                log(`❌ 发送失败 (Failed to fetch)`, 'error');
-                log(`可能原因:\n1. 混合内容: 网页是HTTPS而服务器是HTTP\n2. 跨域(CORS): 后端没开启CORS\n3. 插件拦截: 请关闭广告拦截器`, 'warn');
+            if (!navigator.geolocation) {
+                log("❌ 错误: 您的浏览器不支持地理位置功能", "error");
+                btn.disabled = false;
+                return;
             }
-        }
-
-        // 测试 1: 仅测试连接
-        function testConnection() {
-            sendData({ message: "Ping Test", timestamp: new Date() }, "测试数据包");
-        }
-
-        // 测试 2: 完整流程
-        function getFullLocation() {
-            log("正在请求位置权限...");
-            if (!navigator.geolocation) return log("浏览器不支持地理位置", "error");
 
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
+                (position) => {
                     const data = {
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                        timestamp: new Date().toISOString()
                     };
-                    log(`📍 获取到位置: ${data.latitude}, ${data.longitude}`, 'success');
-                    sendData(data, "真实位置数据");
+                    
+                    log(`✅ 获取成功: 纬度 ${data.latitude.toFixed(5)}, 经度 ${data.longitude.toFixed(5)}`, "success");
+                    sendData(data);
                 },
-                (err) => {
-                    log(`❌ 定位失败: ${err.message}`, 'error');
+                (error) => {
+                    let errMsg = "";
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED: errMsg = "用户拒绝了位置请求"; break;
+                        case error.POSITION_UNAVAILABLE: errMsg = "位置信息不可用"; break;
+                        case error.TIMEOUT: errMsg = "请求超时"; break;
+                        default: errMsg = error.message; break;
+                    }
+                    log(`❌ 定位失败: ${errMsg}`, "error");
+                    btn.disabled = false;
+                    btn.innerText = "重试";
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         }
+
+        function sendData(data) {
+            log("正在发送数据到服务器...");
+
+            fetch(SERVER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 👇 这个头很重要，防止 ngrok 弹出“访问警告页面”拦截 API
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(async (response) => {
+                if (response.ok) {
+                    const json = await response.json();
+                    log("🚀 发送成功！服务器已接收。", "success");
+                } else {
+                    log(`⚠️ 服务器返回错误: ${response.status} ${response.statusText}`, "error");
+                }
+            })
+            .catch((error) => {
+                log(`❌ 网络错误: ${error.message}`, "error");
+                log(`提示: 请检查 Python 后端和 Ngrok 窗口是否都开着`, "normal");
+            })
+            .finally(() => {
+                document.getElementById('btn').disabled = false;
+                document.getElementById('btn').innerText = "获取并发送位置";
+            });
+        }
     </script>
+
 </body>
 </html>
